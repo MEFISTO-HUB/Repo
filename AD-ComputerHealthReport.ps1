@@ -123,7 +123,18 @@ function Get-ComputerUptimeHours {
 
     try {
         $os = Get-CimInstance -ClassName Win32_OperatingSystem -ComputerName $ComputerName -OperationTimeoutSec $OperationTimeoutSec -ErrorAction Stop
-        $lastBoot = [Management.ManagementDateTimeConverter]::ToDateTime($os.LastBootUpTime)
+        $lastBoot = $null
+        if ($os.LastBootUpTime -is [datetime]) {
+            $lastBoot = $os.LastBootUpTime
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace([string]$os.LastBootUpTime)) {
+            $lastBoot = [Management.ManagementDateTimeConverter]::ToDateTime([string]$os.LastBootUpTime)
+        }
+
+        if (-not $lastBoot) {
+            throw 'LastBootUpTime is empty or has unsupported format.'
+        }
+
         $uptime = (Get-Date) - $lastBoot
         $uptimeHours = [math]::Floor($uptime.TotalHours)
 
@@ -155,28 +166,33 @@ function Get-PendingRebootStatus {
     }
 
     try {
-        $basePath = "\\$ComputerName\HKLM"
-        $cbsPath = "$basePath\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending"
-        $wuPath = "$basePath\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired"
-        $sessionMgrPath = "$basePath\SYSTEM\CurrentControlSet\Control\Session Manager"
-
         $isPending = $false
+        $regHive = [Microsoft.Win32.RegistryHive]::LocalMachine
+        $remoteBase = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey($regHive, $ComputerName)
 
-        if (Test-Path -Path "Registry::$cbsPath" -ErrorAction SilentlyContinue) {
+        $cbsKey = $remoteBase.OpenSubKey('SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending')
+        if ($cbsKey) {
             $isPending = $true
             $result.Reason += 'CBS:RebootPending'
+            $cbsKey.Close()
         }
 
-        if (Test-Path -Path "Registry::$wuPath" -ErrorAction SilentlyContinue) {
+        $wuKey = $remoteBase.OpenSubKey('SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired')
+        if ($wuKey) {
             $isPending = $true
             $result.Reason += 'WUAU:RebootRequired'
+            $wuKey.Close()
         }
 
-        $pendingFileRename = Get-ItemProperty -Path "Registry::$sessionMgrPath" -Name 'PendingFileRenameOperations' -ErrorAction SilentlyContinue
-        if ($null -ne $pendingFileRename.PendingFileRenameOperations) {
+        $sessionMgrKey = $remoteBase.OpenSubKey('SYSTEM\CurrentControlSet\Control\Session Manager')
+        $pendingFileRename = if ($sessionMgrKey) { $sessionMgrKey.GetValue('PendingFileRenameOperations', $null) } else { $null }
+        if ($null -ne $pendingFileRename) {
             $isPending = $true
             $result.Reason += 'SessionManager:PendingFileRenameOperations'
         }
+
+        if ($sessionMgrKey) { $sessionMgrKey.Close() }
+        $remoteBase.Close()
 
         $result.RebootRequired = if ($isPending) { 'Yes' } else { 'No' }
         return $result
