@@ -77,7 +77,7 @@ function Get-ADComputerList {
             Write-Verbose 'Query AD computers in entire domain.'
         }
 
-        $computers = Get-ADComputer @adParams | Sort-Object -Property Name
+        $computers = @(Get-ADComputer @adParams | Sort-Object -Property Name)
         Write-Verbose ("Retrieved computers from AD: {0}" -f $computers.Count)
         return $computers
     }
@@ -202,9 +202,9 @@ function New-HtmlReport {
 
     $generatedAt = Get-Date
     $total = $Data.Count
-    $onlineCount = ($Data | Where-Object { $_.Status -eq 'Online' }).Count
-    $offlineCount = ($Data | Where-Object { $_.Status -eq 'Offline' }).Count
-    $rebootCount = ($Data | Where-Object { $_.RebootRequired -eq 'Yes' }).Count
+    $onlineCount = @($Data | Where-Object { $_.Status -eq 'Online' }).Count
+    $offlineCount = @($Data | Where-Object { $_.Status -eq 'Offline' }).Count
+    $rebootCount = @($Data | Where-Object { $_.RebootRequired -eq 'Yes' }).Count
 
     $safeScope = if ([string]::IsNullOrWhiteSpace($SearchBase)) { 'Entire domain' } else { $SearchBase }
 
