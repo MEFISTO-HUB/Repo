@@ -161,7 +161,7 @@ function Get-PendingRebootStatus {
     )
 
     $result = [pscustomobject]@{
-        RebootRequired = 'Unknown'
+        RebootRequired = 'Неизвестно'
         Reason         = @()
     }
 
@@ -194,7 +194,7 @@ function Get-PendingRebootStatus {
         if ($sessionMgrKey) { $sessionMgrKey.Close() }
         $remoteBase.Close()
 
-        $result.RebootRequired = if ($isPending) { 'Yes' } else { 'No' }
+        $result.RebootRequired = if ($isPending) { 'Да' } else { 'Нет' }
         return $result
     }
     catch {
@@ -218,17 +218,17 @@ function New-HtmlReport {
 
     $generatedAt = Get-Date
     $total = $Data.Count
-    $onlineCount = @($Data | Where-Object { $_.Status -eq 'Online' }).Count
-    $offlineCount = @($Data | Where-Object { $_.Status -eq 'Offline' }).Count
-    $rebootCount = @($Data | Where-Object { $_.RebootRequired -eq 'Yes' }).Count
+    $onlineCount = @($Data | Where-Object { $_.Status -eq 'В сети' }).Count
+    $offlineCount = @($Data | Where-Object { $_.Status -eq 'Не в сети' }).Count
+    $rebootCount = @($Data | Where-Object { $_.RebootRequired -eq 'Да' }).Count
 
-    $safeScope = if ([string]::IsNullOrWhiteSpace($SearchBase)) { 'Entire domain' } else { $SearchBase }
+    $safeScope = if ([string]::IsNullOrWhiteSpace($SearchBase)) { 'Весь домен' } else { $SearchBase }
 
     $rows = foreach ($item in $Data) {
-        $statusClass = if ($item.Status -eq 'Online') { 'status-online' } else { 'status-offline' }
+        $statusClass = if ($item.Status -eq 'В сети') { 'status-online' } else { 'status-offline' }
         $rebootClass = switch ($item.RebootRequired) {
-            'Yes' { 'reboot-yes' }
-            'No' { 'reboot-no' }
+            'Да' { 'reboot-yes' }
+            'Нет' { 'reboot-no' }
             default { 'reboot-unknown' }
         }
 
@@ -249,11 +249,11 @@ function New-HtmlReport {
 
     $html = @"
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>AD Computer Health Report</title>
+<title>Отчёт о состоянии компьютеров AD</title>
 <style>
     body { font-family: Segoe UI, Arial, sans-serif; margin: 20px; background: #f5f7fb; color: #1d2630; }
     h1 { margin-bottom: 6px; }
@@ -277,32 +277,32 @@ function New-HtmlReport {
 </style>
 </head>
 <body>
-    <h1>Active Directory Computer Health Report</h1>
-    <div class="meta">Generated: $($generatedAt.ToString('yyyy-MM-dd HH:mm:ss')) | Scope: $safeScope</div>
+    <h1>Отчёт о состоянии компьютеров Active Directory</h1>
+    <div class="meta">Сформирован: $($generatedAt.ToString('yyyy-MM-dd HH:mm:ss')) | Область: $safeScope</div>
 
     <div class="cards">
-        <div class="card"><div class="label">Total PCs</div><div class="value">$total</div></div>
-        <div class="card"><div class="label">Online</div><div class="value">$onlineCount</div></div>
-        <div class="card"><div class="label">Offline</div><div class="value">$offlineCount</div></div>
-        <div class="card"><div class="label">Reboot Required</div><div class="value">$rebootCount</div></div>
+        <div class="card"><div class="label">Всего ПК</div><div class="value">$total</div></div>
+        <div class="card"><div class="label">В сети</div><div class="value">$onlineCount</div></div>
+        <div class="card"><div class="label">Не в сети</div><div class="value">$offlineCount</div></div>
+        <div class="card"><div class="label">Требуется перезагрузка</div><div class="value">$rebootCount</div></div>
     </div>
 
     <div class="toolbar">
-        <input type="text" id="searchInput" placeholder="Search in report..." onkeyup="filterTable()" />
+        <input type="text" id="searchInput" placeholder="Поиск по отчёту..." onkeyup="filterTable()" />
     </div>
 
     <table id="reportTable">
         <thead>
             <tr>
-                <th onclick="sortTable(0)">Computer Name</th>
+                <th onclick="sortTable(0)">Имя компьютера</th>
                 <th onclick="sortTable(1)">FQDN</th>
-                <th onclick="sortTable(2)">Status</th>
-                <th onclick="sortTable(3)">Reboot Required</th>
-                <th onclick="sortTable(4)">Uptime (hours)</th>
-                <th onclick="sortTable(5)">Last Boot</th>
-                <th onclick="sortTable(6)">OS</th>
-                <th onclick="sortTable(7)">LastLogonDate</th>
-                <th onclick="sortTable(8)">IP Address</th>
+                <th onclick="sortTable(2)">Статус</th>
+                <th onclick="sortTable(3)">Перезагрузка</th>
+                <th onclick="sortTable(4)">Аптайм (часы)</th>
+                <th onclick="sortTable(5)">Последняя загрузка</th>
+                <th onclick="sortTable(6)">ОС</th>
+                <th onclick="sortTable(7)">Последний вход</th>
+                <th onclick="sortTable(8)">IP-адрес</th>
             </tr>
         </thead>
         <tbody>
@@ -310,7 +310,7 @@ function New-HtmlReport {
         </tbody>
     </table>
 
-    <div class="hint">Tip: click any column header to sort. Uptime sorts by numeric hours.</div>
+    <div class="hint">Совет: нажмите на заголовок столбца для сортировки. Аптайм сортируется по числу часов.</div>
 
 <script>
 let sortDirections = {};
@@ -393,7 +393,7 @@ try {
         Write-Verbose "Processing computer: $computerName"
 
         $isOnline = Test-ComputerOnline -ComputerName $fqdn -TimeoutMs $PingTimeout
-        $status = if ($isOnline) { 'Online' } else { 'Offline' }
+        $status = if ($isOnline) { 'В сети' } else { 'Не в сети' }
 
         if (-not $isOnline -and -not $IncludeOffline) {
             Write-Verbose "Skipping offline host due to IncludeOffline switch not set: $computerName"
@@ -401,8 +401,8 @@ try {
         }
 
         $uptimeInfo = [pscustomobject]@{ UptimeHours = $null; LastBootUpTime = $null }
-        $rebootInfo = [pscustomobject]@{ RebootRequired = 'Unknown'; Reason = @() }
-        $ipAddress = 'Offline'
+        $rebootInfo = [pscustomobject]@{ RebootRequired = 'Неизвестно'; Reason = @() }
+        $ipAddress = 'Не в сети'
 
         if ($isOnline) {
             try {
@@ -423,11 +423,11 @@ try {
                 $ipRecord = [System.Net.Dns]::GetHostAddresses($fqdn) |
                     Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } |
                     Select-Object -First 1
-                if ($ipRecord) { $ipAddress = $ipRecord.IPAddressToString } else { $ipAddress = 'Unknown' }
+                if ($ipRecord) { $ipAddress = $ipRecord.IPAddressToString } else { $ipAddress = 'Неизвестно' }
             }
             catch {
                 Write-Verbose "IP resolve failed for ${computerName}: $($_.Exception.Message)"
-                $ipAddress = 'Unknown'
+                $ipAddress = 'Неизвестно'
             }
         }
 
@@ -436,11 +436,11 @@ try {
             FQDN              = $fqdn
             Status            = $status
             RebootRequired    = $rebootInfo.RebootRequired
-            UptimeHoursDisplay = if ($null -ne $uptimeInfo.UptimeHours) { "{0} ч" -f $uptimeInfo.UptimeHours } elseif ($isOnline) { 'Unknown' } else { 'Offline' }
+            UptimeHoursDisplay = if ($null -ne $uptimeInfo.UptimeHours) { "{0} ч" -f $uptimeInfo.UptimeHours } elseif ($isOnline) { 'Неизвестно' } else { 'Не в сети' }
             UptimeHoursSort   = if ($null -ne $uptimeInfo.UptimeHours) { [int]$uptimeInfo.UptimeHours } else { '' }
-            LastBootUpTime    = if ($uptimeInfo.LastBootUpTime) { $uptimeInfo.LastBootUpTime.ToString('yyyy-MM-dd HH:mm:ss') } elseif ($isOnline) { 'Unknown' } else { 'Offline' }
-            OperatingSystem   = if ($computer.OperatingSystem) { $computer.OperatingSystem } else { 'Unknown' }
-            LastLogonDate     = if ($computer.LastLogonDate) { $computer.LastLogonDate.ToString('yyyy-MM-dd HH:mm:ss') } else { 'Unknown' }
+            LastBootUpTime    = if ($uptimeInfo.LastBootUpTime) { $uptimeInfo.LastBootUpTime.ToString('yyyy-MM-dd HH:mm:ss') } elseif ($isOnline) { 'Неизвестно' } else { 'Не в сети' }
+            OperatingSystem   = if ($computer.OperatingSystem) { $computer.OperatingSystem } else { 'Неизвестно' }
+            LastLogonDate     = if ($computer.LastLogonDate) { $computer.LastLogonDate.ToString('yyyy-MM-dd HH:mm:ss') } else { 'Неизвестно' }
             IPAddress         = $ipAddress
         }) | Out-Null
     }
