@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Generates an HTML report for Active Directory computers with online state, uptime, pending reboot state, and core inventory data.
 
