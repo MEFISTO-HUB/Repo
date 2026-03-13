@@ -33,6 +33,10 @@ param(
     [int]$PingTimeout = 1000,
 
     [Parameter(Mandatory = $false)]
+    [ValidateRange(3, 120)]
+    [int]$RemoteQueryTimeoutSec = 15,
+
+    [Parameter(Mandatory = $false)]
     [switch]$IncludeOffline,
 
     [Parameter(Mandatory = $false)]
@@ -94,12 +98,7 @@ function Test-ComputerOnline {
     )
 
     try {
-        if (Get-Command -Name Test-Connection -ErrorAction SilentlyContinue) {
-            $online = Test-Connection -ComputerName $ComputerName -Count 1 -Quiet -ErrorAction SilentlyContinue
-            return [bool]$online
-        }
-
-        # Fallback for environments where Test-Connection is constrained
+        # Use .NET Ping directly so timeout is always enforced.
         $ping = New-Object System.Net.NetworkInformation.Ping
         $reply = $ping.Send($ComputerName, $TimeoutMs)
         return ($reply.Status -eq [System.Net.NetworkInformation.IPStatus]::Success)
@@ -115,11 +114,15 @@ function Get-ComputerUptimeHours {
     param(
         [Parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
-        [string]$ComputerName
+        [string]$ComputerName,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateRange(3, 120)]
+        [int]$OperationTimeoutSec = 15
     )
 
     try {
-        $os = Get-CimInstance -ClassName Win32_OperatingSystem -ComputerName $ComputerName -ErrorAction Stop
+        $os = Get-CimInstance -ClassName Win32_OperatingSystem -ComputerName $ComputerName -OperationTimeoutSec $OperationTimeoutSec -ErrorAction Stop
         $lastBoot = [Management.ManagementDateTimeConverter]::ToDateTime($os.LastBootUpTime)
         $uptime = (Get-Date) - $lastBoot
         $uptimeHours = [math]::Floor($uptime.TotalHours)
@@ -358,12 +361,18 @@ function filterTable() {
 # Main workflow
 try {
     $adComputers = Get-ADComputerList -SearchBase $SearchBase
+    Write-Host ("Found computers in scope: {0}" -f $adComputers.Count) -ForegroundColor Cyan
 
     $reportItems = New-Object 'System.Collections.Generic.List[object]'
+    $processed = 0
+    $total = [Math]::Max(1, $adComputers.Count)
 
     foreach ($computer in $adComputers) {
+        $processed++
         $computerName = $computer.Name
         $fqdn = if ([string]::IsNullOrWhiteSpace($computer.DNSHostName)) { $computerName } else { $computer.DNSHostName }
+
+        Write-Progress -Activity 'Collecting AD computer health data' -Status ("{0}/{1}: {2}" -f $processed, $total, $computerName) -PercentComplete (($processed / $total) * 100)
 
         Write-Verbose "Processing computer: $computerName"
 
@@ -381,7 +390,7 @@ try {
 
         if ($isOnline) {
             try {
-                $uptimeInfo = Get-ComputerUptimeHours -ComputerName $fqdn
+                $uptimeInfo = Get-ComputerUptimeHours -ComputerName $fqdn -OperationTimeoutSec $RemoteQueryTimeoutSec
             }
             catch {
                 Write-Verbose "Uptime retrieval failed for ${computerName}: $($_.Exception.Message)"
@@ -419,6 +428,8 @@ try {
             IPAddress         = $ipAddress
         }) | Out-Null
     }
+
+    Write-Progress -Activity 'Collecting AD computer health data' -Completed
 
     New-HtmlReport -Data $reportItems -OutputPath $OutputPath -SearchBase $SearchBase
 
