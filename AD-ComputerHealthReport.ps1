@@ -105,7 +105,7 @@ function Test-ComputerOnline {
         return ($reply.Status -eq [System.Net.NetworkInformation.IPStatus]::Success)
     }
     catch {
-        Write-Verbose "Ping check failed for $ComputerName: $($_.Exception.Message)"
+        Write-Verbose "Ping check failed for ${ComputerName}: $($_.Exception.Message)"
         return $false
     }
 }
@@ -130,7 +130,7 @@ function Get-ComputerUptimeHours {
         }
     }
     catch {
-        Write-Verbose "Failed to get uptime for $ComputerName: $($_.Exception.Message)"
+        Write-Verbose "Failed to get uptime for ${ComputerName}: $($_.Exception.Message)"
         return [pscustomobject]@{
             UptimeHours     = $null
             LastBootUpTime  = $null
@@ -384,14 +384,14 @@ try {
                 $uptimeInfo = Get-ComputerUptimeHours -ComputerName $fqdn
             }
             catch {
-                Write-Verbose "Uptime retrieval failed for $computerName: $($_.Exception.Message)"
+                Write-Verbose "Uptime retrieval failed for ${computerName}: $($_.Exception.Message)"
             }
 
             try {
                 $rebootInfo = Get-PendingRebootStatus -ComputerName $computerName
             }
             catch {
-                Write-Verbose "Pending reboot check failed for $computerName: $($_.Exception.Message)"
+                Write-Verbose "Pending reboot check failed for ${computerName}: $($_.Exception.Message)"
             }
 
             try {
@@ -401,7 +401,7 @@ try {
                 if ($ipRecord) { $ipAddress = $ipRecord.IPAddressToString } else { $ipAddress = 'Unknown' }
             }
             catch {
-                Write-Verbose "IP resolve failed for $computerName: $($_.Exception.Message)"
+                Write-Verbose "IP resolve failed for ${computerName}: $($_.Exception.Message)"
                 $ipAddress = 'Unknown'
             }
         }
