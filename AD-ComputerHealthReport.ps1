@@ -164,6 +164,35 @@ function Get-ComputerUptimeHours {
     }
 }
 
+function Get-FirstSuccessfulResult {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$ComputerNames,
+
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$ScriptBlock,
+
+        [Parameter(Mandatory = $true)]
+        [string]$OperationName,
+
+        [Parameter(Mandatory = $false)]
+        [AllowNull()]
+        $DefaultResult = $null
+    )
+
+    foreach ($target in ($ComputerNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
+        try {
+            return (& $ScriptBlock $target)
+        }
+        catch {
+            Write-Verbose "$OperationName failed for ${target}: $($_.Exception.Message)"
+        }
+    }
+
+    return $DefaultResult
+}
+
 function Get-PendingRebootStatus {
     [CmdletBinding()]
     param(
@@ -499,20 +528,16 @@ try {
         $ipAddress = 'Не в сети'
 
         if ($isOnline) {
-            try {
-                $uptimeInfo = Get-ComputerUptimeHours -ComputerName $fqdn -OperationTimeoutSec $RemoteQueryTimeoutSec
-            }
-            catch {
-                Write-Verbose "Uptime retrieval failed for ${computerName}: $($_.Exception.Message)"
+            $remoteTargets = @($fqdn, $computerName)
+
+            $uptimeInfo = Get-FirstSuccessfulResult -ComputerNames $remoteTargets -OperationName 'Uptime retrieval' -DefaultResult $uptimeInfo -ScriptBlock {
+                param($target)
+                Get-ComputerUptimeHours -ComputerName $target -OperationTimeoutSec $RemoteQueryTimeoutSec
             }
 
-            try {
-                # Use FQDN for remote reboot checks because many environments do not resolve
-                # short hostnames consistently for Remote Registry/CIM providers.
-                $rebootInfo = Get-PendingRebootStatus -ComputerName $fqdn
-            }
-            catch {
-                Write-Verbose "Pending reboot check failed for ${computerName}: $($_.Exception.Message)"
+            $rebootInfo = Get-FirstSuccessfulResult -ComputerNames $remoteTargets -OperationName 'Pending reboot check' -DefaultResult $rebootInfo -ScriptBlock {
+                param($target)
+                Get-PendingRebootStatus -ComputerName $target
             }
 
             try {
