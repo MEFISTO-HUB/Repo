@@ -222,7 +222,18 @@ function New-HtmlReport {
     $offlineCount = @($Data | Where-Object { $_.Status -eq 'Offline' }).Count
     $rebootCount = @($Data | Where-Object { $_.RebootRequired -eq 'Yes' }).Count
 
-    $safeScope = if ([string]::IsNullOrWhiteSpace($SearchBase)) { 'Entire domain' } else { $SearchBase }
+    $safeScope = if ([string]::IsNullOrWhiteSpace($SearchBase)) { 'Весь домен' } else { $SearchBase }
+
+    $statusMap = @{
+        Online  = 'В сети'
+        Offline = 'Не в сети'
+    }
+
+    $rebootMap = @{
+        Yes     = 'Да'
+        No      = 'Нет'
+        Unknown = 'Неизвестно'
+    }
 
     $rows = foreach ($item in $Data) {
         $statusClass = if ($item.Status -eq 'Online') { 'status-online' } else { 'status-offline' }
@@ -236,8 +247,8 @@ function New-HtmlReport {
 <tr>
     <td>$($item.ComputerName)</td>
     <td>$($item.FQDN)</td>
-    <td class="$statusClass">$($item.Status)</td>
-    <td class="$rebootClass">$($item.RebootRequired)</td>
+    <td class="$statusClass">$($statusMap[$item.Status])</td>
+    <td class="$rebootClass">$($rebootMap[$item.RebootRequired])</td>
     <td data-value="$($item.UptimeHoursSort)">$($item.UptimeHoursDisplay)</td>
     <td>$($item.LastBootUpTime)</td>
     <td>$($item.OperatingSystem)</td>
@@ -249,11 +260,11 @@ function New-HtmlReport {
 
     $html = @"
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>AD Computer Health Report</title>
+<title>Отчёт по состоянию компьютеров AD</title>
 <style>
     body { font-family: Segoe UI, Arial, sans-serif; margin: 20px; background: #f5f7fb; color: #1d2630; }
     h1 { margin-bottom: 6px; }
@@ -277,32 +288,32 @@ function New-HtmlReport {
 </style>
 </head>
 <body>
-    <h1>Active Directory Computer Health Report</h1>
-    <div class="meta">Generated: $($generatedAt.ToString('yyyy-MM-dd HH:mm:ss')) | Scope: $safeScope</div>
+    <h1>Отчёт по состоянию компьютеров Active Directory</h1>
+    <div class="meta">Сформирован: $($generatedAt.ToString('yyyy-MM-dd HH:mm:ss')) | Область: $safeScope</div>
 
     <div class="cards">
-        <div class="card"><div class="label">Total computers</div><div class="value">$total</div></div>
-        <div class="card"><div class="label">Online</div><div class="value">$onlineCount</div></div>
-        <div class="card"><div class="label">Offline</div><div class="value">$offlineCount</div></div>
-        <div class="card"><div class="label">Reboot required</div><div class="value">$rebootCount</div></div>
+        <div class="card"><div class="label">Всего компьютеров</div><div class="value">$total</div></div>
+        <div class="card"><div class="label">В сети</div><div class="value">$onlineCount</div></div>
+        <div class="card"><div class="label">Не в сети</div><div class="value">$offlineCount</div></div>
+        <div class="card"><div class="label">Требуется перезагрузка</div><div class="value">$rebootCount</div></div>
     </div>
 
     <div class="toolbar">
-        <input type="text" id="searchInput" placeholder="Search report..." onkeyup="filterTable()" />
+        <input type="text" id="searchInput" placeholder="Поиск по отчёту..." onkeyup="filterTable()" />
     </div>
 
     <table id="reportTable">
         <thead>
             <tr>
-                <th onclick="sortTable(0)">Computer name</th>
+                <th onclick="sortTable(0)">Имя компьютера</th>
                 <th onclick="sortTable(1)">FQDN</th>
-                <th onclick="sortTable(2)">Status</th>
-                <th onclick="sortTable(3)">Reboot</th>
-                <th onclick="sortTable(4)">Uptime (hours)</th>
-                <th onclick="sortTable(5)">Last boot</th>
+                <th onclick="sortTable(2)">Статус</th>
+                <th onclick="sortTable(3)">Перезагрузка</th>
+                <th onclick="sortTable(4)">Время работы (ч)</th>
+                <th onclick="sortTable(5)">Последняя загрузка</th>
                 <th onclick="sortTable(6)">OS</th>
-                <th onclick="sortTable(7)">Last logon</th>
-                <th onclick="sortTable(8)">IP address</th>
+                <th onclick="sortTable(7)">Последний вход</th>
+                <th onclick="sortTable(8)">IP-адрес</th>
             </tr>
         </thead>
         <tbody>
@@ -310,7 +321,7 @@ function New-HtmlReport {
         </tbody>
     </table>
 
-    <div class="hint">Tip: click a column header to sort. Uptime is sorted numerically.</div>
+    <div class="hint">Подсказка: нажмите на заголовок столбца для сортировки. Время работы сортируется численно.</div>
 
 <script>
 let sortDirections = {};
@@ -377,7 +388,7 @@ function filterTable() {
 # Main workflow
 try {
     $adComputers = Get-ADComputerList -SearchBase $SearchBase
-    Write-Host ("Found computers in scope: {0}" -f $adComputers.Count) -ForegroundColor Cyan
+    Write-Host ("Найдено компьютеров в выбранной области: {0}" -f $adComputers.Count) -ForegroundColor Cyan
 
     $reportItems = New-Object 'System.Collections.Generic.List[object]'
     $processed = 0
@@ -402,7 +413,7 @@ try {
 
         $uptimeInfo = [pscustomobject]@{ UptimeHours = $null; LastBootUpTime = $null }
         $rebootInfo = [pscustomobject]@{ RebootRequired = 'Unknown'; Reason = @() }
-        $ipAddress = 'Offline'
+        $ipAddress = 'Не в сети'
 
         if ($isOnline) {
             try {
@@ -423,11 +434,11 @@ try {
                 $ipRecord = [System.Net.Dns]::GetHostAddresses($fqdn) |
                     Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } |
                     Select-Object -First 1
-                if ($ipRecord) { $ipAddress = $ipRecord.IPAddressToString } else { $ipAddress = 'Unknown' }
+                if ($ipRecord) { $ipAddress = $ipRecord.IPAddressToString } else { $ipAddress = 'Неизвестно' }
             }
             catch {
                 Write-Verbose "IP resolve failed for ${computerName}: $($_.Exception.Message)"
-                $ipAddress = 'Unknown'
+                $ipAddress = 'Неизвестно'
             }
         }
 
@@ -436,11 +447,11 @@ try {
             FQDN              = $fqdn
             Status            = $status
             RebootRequired    = $rebootInfo.RebootRequired
-            UptimeHoursDisplay = if ($null -ne $uptimeInfo.UptimeHours) { "{0} h" -f $uptimeInfo.UptimeHours } elseif ($isOnline) { 'Unknown' } else { 'Offline' }
+            UptimeHoursDisplay = if ($null -ne $uptimeInfo.UptimeHours) { "{0} ч" -f $uptimeInfo.UptimeHours } elseif ($isOnline) { 'Неизвестно' } else { 'Не в сети' }
             UptimeHoursSort   = if ($null -ne $uptimeInfo.UptimeHours) { [int]$uptimeInfo.UptimeHours } else { '' }
-            LastBootUpTime    = if ($uptimeInfo.LastBootUpTime) { $uptimeInfo.LastBootUpTime.ToString('yyyy-MM-dd HH:mm:ss') } elseif ($isOnline) { 'Unknown' } else { 'Offline' }
-            OperatingSystem   = if ($computer.OperatingSystem) { $computer.OperatingSystem } else { 'Unknown' }
-            LastLogonDate     = if ($computer.LastLogonDate) { $computer.LastLogonDate.ToString('yyyy-MM-dd HH:mm:ss') } else { 'Unknown' }
+            LastBootUpTime    = if ($uptimeInfo.LastBootUpTime) { $uptimeInfo.LastBootUpTime.ToString('yyyy-MM-dd HH:mm:ss') } elseif ($isOnline) { 'Неизвестно' } else { 'Не в сети' }
+            OperatingSystem   = if ($computer.OperatingSystem) { $computer.OperatingSystem } else { 'Неизвестно' }
+            LastLogonDate     = if ($computer.LastLogonDate) { $computer.LastLogonDate.ToString('yyyy-MM-dd HH:mm:ss') } else { 'Неизвестно' }
             IPAddress         = $ipAddress
         }) | Out-Null
     }
@@ -449,24 +460,24 @@ try {
 
     New-HtmlReport -Data $reportItems -OutputPath $OutputPath -SearchBase $SearchBase
 
-    Write-Host "Report generated successfully: $OutputPath" -ForegroundColor Green
+    Write-Host "Отчёт успешно сформирован: $OutputPath" -ForegroundColor Green
 
     if ($OpenReport) {
         try {
             Start-Process -FilePath $OutputPath -ErrorAction Stop
         }
         catch {
-            Write-Warning "Unable to open report automatically: $($_.Exception.Message)"
+            Write-Warning "Не удалось автоматически открыть отчёт: $($_.Exception.Message)"
         }
     }
 
-    Write-Host "Required permissions and prerequisites:" -ForegroundColor Cyan
-    Write-Host " - Read access to AD computer objects (domain user is usually enough)." -ForegroundColor Cyan
-    Write-Host " - Remote WMI/CIM access for uptime collection (WinRM/DCOM and firewall rules as applicable)." -ForegroundColor Cyan
-    Write-Host " - Remote Registry access for reboot checks (Remote Registry service and ACLs)." -ForegroundColor Cyan
-    Write-Host " - Installed module: ActiveDirectory (RSAT / AD DS tools)." -ForegroundColor Cyan
+    Write-Host "Необходимые права и зависимости:" -ForegroundColor Cyan
+    Write-Host " - Доступ на чтение объектов компьютеров в AD (обычно достаточно прав доменного пользователя)." -ForegroundColor Cyan
+    Write-Host " - Удалённый доступ WMI/CIM для сбора времени работы (WinRM/DCOM и правила брандмауэра)." -ForegroundColor Cyan
+    Write-Host " - Удалённый доступ к реестру для проверки перезагрузки (служба Remote Registry и ACL)." -ForegroundColor Cyan
+    Write-Host " - Установленный модуль: ActiveDirectory (RSAT / AD DS tools)." -ForegroundColor Cyan
 }
 catch {
-    Write-Error "Script execution failed: $($_.Exception.Message)"
+    Write-Error "Ошибка выполнения скрипта: $($_.Exception.Message)"
     exit 1
 }
