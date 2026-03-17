@@ -165,8 +165,10 @@ function Get-PendingRebootStatus {
         Reason         = @()
     }
 
+    $isPending = $false
+    $regReadSucceeded = $false
+
     try {
-        $isPending = $false
         $regHive = [Microsoft.Win32.RegistryHive]::LocalMachine
         $remoteBase = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey($regHive, $ComputerName)
 
@@ -193,14 +195,53 @@ function Get-PendingRebootStatus {
 
         if ($sessionMgrKey) { $sessionMgrKey.Close() }
         $remoteBase.Close()
-
-        $result.RebootRequired = if ($isPending) { 'Yes' } else { 'No' }
-        return $result
+        $regReadSucceeded = $true
     }
     catch {
-        Write-Verbose "Failed to evaluate pending reboot for $ComputerName (Remote Registry likely unavailable): $($_.Exception.Message)"
-        return $result
+        Write-Verbose "Remote Registry check failed for ${ComputerName}: $($_.Exception.Message). Trying CIM StdRegProv fallback."
     }
+
+    if (-not $regReadSucceeded) {
+        try {
+            $hklm = [uint32]2147483650
+            $stdReg = Get-CimInstance -ClassName StdRegProv -Namespace root/default -ComputerName $ComputerName -ErrorAction Stop
+
+            $pathsToCheck = @(
+                @{ Path = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'; Reason = 'CBS:RebootPending' },
+                @{ Path = 'SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'; Reason = 'WUAU:RebootRequired' }
+            )
+
+            foreach ($pathInfo in $pathsToCheck) {
+                $enumResult = Invoke-CimMethod -InputObject $stdReg -MethodName EnumKey -Arguments @{ hDefKey = $hklm; sSubKeyName = $pathInfo.Path } -ErrorAction Stop
+                if ($enumResult.ReturnValue -eq 0) {
+                    $isPending = $true
+                    $result.Reason += $pathInfo.Reason
+                }
+            }
+
+            $pfroResult = Invoke-CimMethod -InputObject $stdReg -MethodName GetMultiStringValue -Arguments @{
+                hDefKey     = $hklm
+                sSubKeyName = 'SYSTEM\CurrentControlSet\Control\Session Manager'
+                sValueName  = 'PendingFileRenameOperations'
+            } -ErrorAction Stop
+
+            if ($pfroResult.ReturnValue -eq 0 -and $null -ne $pfroResult.sValue) {
+                $isPending = $true
+                $result.Reason += 'SessionManager:PendingFileRenameOperations'
+            }
+
+            $regReadSucceeded = $true
+        }
+        catch {
+            Write-Verbose "CIM StdRegProv fallback failed for ${ComputerName}: $($_.Exception.Message)"
+        }
+    }
+
+    if ($regReadSucceeded) {
+        $result.RebootRequired = if ($isPending) { 'Yes' } else { 'No' }
+    }
+
+    return $result
 }
 
 function New-HtmlReport {
