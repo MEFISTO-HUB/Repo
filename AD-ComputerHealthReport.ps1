@@ -465,7 +465,9 @@ try {
             }
 
             try {
-                $rebootInfo = Get-PendingRebootStatus -ComputerName $computerName
+                # Use FQDN for remote reboot checks because many environments do not resolve
+                # short hostnames consistently for Remote Registry/CIM providers.
+                $rebootInfo = Get-PendingRebootStatus -ComputerName $fqdn
             }
             catch {
                 Write-Verbose "Pending reboot check failed for ${computerName}: $($_.Exception.Message)"
