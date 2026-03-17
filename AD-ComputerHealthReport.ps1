@@ -204,7 +204,6 @@ function Get-PendingRebootStatus {
     if (-not $regReadSucceeded) {
         try {
             $hklm = [uint32]2147483650
-            $stdReg = Get-CimInstance -ClassName StdRegProv -Namespace root/default -ComputerName $ComputerName -ErrorAction Stop
 
             $pathsToCheck = @(
                 @{ Path = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'; Reason = 'CBS:RebootPending' },
@@ -212,14 +211,14 @@ function Get-PendingRebootStatus {
             )
 
             foreach ($pathInfo in $pathsToCheck) {
-                $enumResult = Invoke-CimMethod -InputObject $stdReg -MethodName EnumKey -Arguments @{ hDefKey = $hklm; sSubKeyName = $pathInfo.Path } -ErrorAction Stop
+                $enumResult = Invoke-CimMethod -ClassName StdRegProv -Namespace root/default -ComputerName $ComputerName -MethodName EnumKey -Arguments @{ hDefKey = $hklm; sSubKeyName = $pathInfo.Path } -ErrorAction Stop
                 if ($enumResult.ReturnValue -eq 0) {
                     $isPending = $true
                     $result.Reason += $pathInfo.Reason
                 }
             }
 
-            $pfroResult = Invoke-CimMethod -InputObject $stdReg -MethodName GetMultiStringValue -Arguments @{
+            $pfroResult = Invoke-CimMethod -ClassName StdRegProv -Namespace root/default -ComputerName $ComputerName -MethodName GetMultiStringValue -Arguments @{
                 hDefKey     = $hklm
                 sSubKeyName = 'SYSTEM\CurrentControlSet\Control\Session Manager'
                 sValueName  = 'PendingFileRenameOperations'
