@@ -121,34 +121,46 @@ function Get-ComputerUptimeHours {
         [int]$OperationTimeoutSec = 15
     )
 
+    $lastBoot = $null
+
     try {
         $os = Get-CimInstance -ClassName Win32_OperatingSystem -ComputerName $ComputerName -OperationTimeoutSec $OperationTimeoutSec -ErrorAction Stop
-        $lastBoot = $null
         if ($os.LastBootUpTime -is [datetime]) {
             $lastBoot = $os.LastBootUpTime
         }
         elseif (-not [string]::IsNullOrWhiteSpace([string]$os.LastBootUpTime)) {
             $lastBoot = [Management.ManagementDateTimeConverter]::ToDateTime([string]$os.LastBootUpTime)
         }
-
-        if (-not $lastBoot) {
-            throw 'LastBootUpTime is empty or has unsupported format.'
-        }
-
-        $uptime = (Get-Date) - $lastBoot
-        $uptimeHours = [math]::Floor($uptime.TotalHours)
-
-        return [pscustomobject]@{
-            UptimeHours     = [int]$uptimeHours
-            LastBootUpTime  = $lastBoot
-        }
     }
     catch {
-        Write-Verbose "Failed to get uptime for ${ComputerName}: $($_.Exception.Message)"
-        return [pscustomobject]@{
-            UptimeHours     = $null
-            LastBootUpTime  = $null
+        Write-Verbose "CIM uptime check failed for ${ComputerName}: $($_.Exception.Message). Trying WMI fallback (DCOM)."
+    }
+
+    if (-not $lastBoot) {
+        try {
+            $wmiOs = Get-WmiObject -Class Win32_OperatingSystem -ComputerName $ComputerName -ErrorAction Stop
+            if ($wmiOs.LastBootUpTime) {
+                $lastBoot = $wmiOs.ConvertToDateTime($wmiOs.LastBootUpTime)
+            }
         }
+        catch {
+            Write-Verbose "WMI uptime fallback failed for ${ComputerName}: $($_.Exception.Message)"
+        }
+    }
+
+    if (-not $lastBoot) {
+        return [pscustomobject]@{
+            UptimeHours    = $null
+            LastBootUpTime = $null
+        }
+    }
+
+    $uptime = (Get-Date) - $lastBoot
+    $uptimeHours = [math]::Floor($uptime.TotalHours)
+
+    return [pscustomobject]@{
+        UptimeHours    = [int]$uptimeHours
+        LastBootUpTime = $lastBoot
     }
 }
 
@@ -233,6 +245,37 @@ function Get-PendingRebootStatus {
         }
         catch {
             Write-Verbose "CIM StdRegProv fallback failed for ${ComputerName}: $($_.Exception.Message)"
+        }
+    }
+
+    if (-not $regReadSucceeded) {
+        try {
+            $hklm = [uint32]2147483650
+            $stdReg = [WMIClass]("\\{0}\\root\\default:StdRegProv" -f $ComputerName)
+
+            $pathsToCheck = @(
+                @{ Path = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'; Reason = 'CBS:RebootPending' },
+                @{ Path = 'SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'; Reason = 'WUAU:RebootRequired' }
+            )
+
+            foreach ($pathInfo in $pathsToCheck) {
+                $enumResult = $stdReg.EnumKey($hklm, $pathInfo.Path)
+                if ($enumResult.ReturnValue -eq 0) {
+                    $isPending = $true
+                    $result.Reason += $pathInfo.Reason
+                }
+            }
+
+            $pfroResult = $stdReg.GetMultiStringValue($hklm, 'SYSTEM\CurrentControlSet\Control\Session Manager', 'PendingFileRenameOperations')
+            if ($pfroResult.ReturnValue -eq 0 -and $null -ne $pfroResult.sValue) {
+                $isPending = $true
+                $result.Reason += 'SessionManager:PendingFileRenameOperations'
+            }
+
+            $regReadSucceeded = $true
+        }
+        catch {
+            Write-Verbose "WMI StdRegProv fallback failed for ${ComputerName}: $($_.Exception.Message)"
         }
     }
 
