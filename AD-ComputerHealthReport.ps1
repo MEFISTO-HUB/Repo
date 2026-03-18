@@ -252,8 +252,12 @@ function Get-PendingRebootStatus {
             )
 
             foreach ($pathInfo in $pathsToCheck) {
-                $enumResult = Invoke-CimMethod -ClassName StdRegProv -Namespace root/default -ComputerName $ComputerName -MethodName EnumKey -Arguments @{ hDefKey = $hklm; sSubKeyName = $pathInfo.Path } -ErrorAction Stop
-                if ($enumResult.ReturnValue -eq 0) {
+                $pathParts = $pathInfo.Path -split '\\'
+                $leafName = $pathParts[-1]
+                $parentPath = ($pathParts[0..($pathParts.Count - 2)] -join '\')
+
+                $enumResult = Invoke-CimMethod -ClassName StdRegProv -Namespace root/default -ComputerName $ComputerName -MethodName EnumKey -Arguments @{ hDefKey = $hklm; sSubKeyName = $parentPath } -ErrorAction Stop
+                if ($enumResult.ReturnValue -eq 0 -and $enumResult.sNames -contains $leafName) {
                     $isPending = $true
                     $result.Reason += $pathInfo.Reason
                 }
@@ -288,8 +292,12 @@ function Get-PendingRebootStatus {
             )
 
             foreach ($pathInfo in $pathsToCheck) {
-                $enumResult = $stdReg.EnumKey($hklm, $pathInfo.Path)
-                if ($enumResult.ReturnValue -eq 0) {
+                $pathParts = $pathInfo.Path -split '\\'
+                $leafName = $pathParts[-1]
+                $parentPath = ($pathParts[0..($pathParts.Count - 2)] -join '\')
+
+                $enumResult = $stdReg.EnumKey($hklm, $parentPath)
+                if ($enumResult.ReturnValue -eq 0 -and $enumResult.sNames -contains $leafName) {
                     $isPending = $true
                     $result.Reason += $pathInfo.Reason
                 }
